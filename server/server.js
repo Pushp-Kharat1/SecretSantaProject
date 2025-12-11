@@ -170,16 +170,17 @@ app.post('/api/event', async (req, res) => {
             return res.status(500).json({ error: "Failed to initialize email service" });
         }
 
-        let emailSuccessCount = 0;
+        const emailPromises = [];
         const matchesList = [];
 
-        // C. Process each match
+        // C. Process each match and Queue Emails
+        console.log("Generating matches and queueing emails...");
         for (let i = 0; i < validParticipants.length; i++) {
             const giver = validParticipants[i];
             const receiver = validParticipants[indices[i]];
             const token = uuidv4();
 
-            // Store in DB
+            // Store in DB (Sequential to ensure integrity)
             await createMatch({
                 eventId,
                 giverName: giver.name,
@@ -196,7 +197,7 @@ app.post('/api/event', async (req, res) => {
                 Token: token
             });
 
-            // Send Email
+            // Prepare Email (Don't await yet!)
             const appUrl = process.env.APP_URL || 'http://localhost:3000';
             const revealLink = `${appUrl}/reveal?token=${token}`;
 
@@ -221,11 +222,15 @@ app.post('/api/event', async (req, res) => {
                 `
             };
 
-            await transporter.sendMail(mailOptions);
-            emailSuccessCount++;
+            emailPromises.push(transporter.sendMail(mailOptions));
         }
 
-        // D. Send CSV to Organizer
+        // D. Send All Emails in Parallel
+        console.log(`Sending ${emailPromises.length} emails in parallel...`);
+        await Promise.all(emailPromises);
+        console.log("All participant emails sent!");
+
+        // E. Send CSV to Organizer (also in parallel effectively, or just await at end)
         if (req.body.organizerEmail) {
             console.log("Sending CSV report to organizer:", req.body.organizerEmail);
             const csvContent = [
@@ -233,6 +238,7 @@ app.post('/api/event', async (req, res) => {
                 ...matchesList.map(m => `${m.Giver},${m.GiverEmail},${m.Receiver},${process.env.APP_URL || 'http://localhost:3000'}/reveal?token=${m.Token}`)
             ].join("\n");
 
+            // We can await this one to ensure admin gets report before confirming success
             await transporter.sendMail({
                 from: process.env.EMAIL_USER,
                 to: req.body.organizerEmail,
@@ -248,9 +254,9 @@ app.post('/api/event', async (req, res) => {
         }
 
         res.status(200).json({
-            message: "Event created and emails sending",
+            message: "Event created and emails sent successfully",
             eventId,
-            emailsSent: emailSuccessCount
+            emailsSent: emailPromises.length
         });
 
     } catch (error) {
