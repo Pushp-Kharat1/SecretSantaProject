@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Secret Santa Organizer</title>
+    <meta name="description" content="Organize your Secret Santa party in 3 easy steps." />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Poppins', sans-serif;
+        overflow-x: hidden;
+      }
+      
+      /* Pixel Art Font for 404 */
+      .font-pixel {
+        font-family: 'Press Start 2P', cursive;
+      }
+      
+      /* Smooth Scrolling */
+      html {
+        scroll-behavior: smooth;
+      }
+
+      /* Custom Festive Scrollbar */
+      ::-webkit-scrollbar {
+        width: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #ef4444; 
+        border-radius: 5px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #b91c1c; 
+      }
+
+      /* Floating Animation */
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-15px); }
+        100% { transform: translateY(0px); }
+      }
+      .animate-float {
+        animation: float 4s ease-in-out infinite;
+      }
+      .animate-float-delayed {
+        animation: float 4s ease-in-out 2s infinite;
+      }
+
+      /* Wiggle Animation */
+      @keyframes wiggle {
+        0%, 100% { transform: rotate(-3deg); }
+        50% { transform: rotate(3deg); }
+      }
+      .animate-wiggle {
+        animation: wiggle 2s ease-in-out infinite;
+      }
+
+      /* Snowfall for Globe (Local) */
+      @keyframes snowfall {
+        0% { transform: translateY(-10px); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: translateY(300px); opacity: 0; }
+      }
+      .animate-snowfall {
+        animation: snowfall 3s linear infinite;
+      }
+      
+      /* Global Falling Snow Animation */
+      @keyframes fall {
+        0% { transform: translateY(-10vh) translateX(-10px) rotate(0deg); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% { transform: translateY(110vh) translateX(10px) rotate(360deg); opacity: 0; }
+      }
+      .animate-fall {
+        animation: fall linear infinite;
+      }
+
+      /* Candy Cane Border Pattern */
+      .bg-candy-cane {
+        background: repeating-linear-gradient(
+          45deg,
+          #ef4444,
+          #ef4444 10px,
+          #ffffff 10px,
+          #ffffff 20px
+        );
+      }
+
+      /* Snow Background Animation */
+      .snow-bg {
+        background-color: #f9fafb;
+        background-image: url('data:image/svg+xml,%3Csvg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="%23e5e7eb" fill-opacity="0.4" fill-rule="evenodd"%3E%3Ccircle cx="3" cy="3" r="3"/%3E%3Ccircle cx="13" cy="13" r="3"/%3E%3C/g%3E%3C/svg%3E');
+        animation: slide 20s linear infinite;
+      }
+      
+      @keyframes slide {
+        from { background-position: 0 0; }
+        to { background-position: 0 400px; }
+      }
+
+      /* Simple Fade Up Animation Utility */
+      .fade-up {
+        animation: fadeUp 0.8s ease-out forwards;
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      @keyframes fadeUp {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0",
+    "papaparse": "https://esm.sh/papaparse@5.4.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-50 text-gray-800">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
