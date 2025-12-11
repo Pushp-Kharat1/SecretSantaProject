@@ -154,13 +154,25 @@ app.post('/api/event', async (req, res) => {
         });
         console.log("Event created with ID:", eventId);
 
-        // B. Shuffle logic
+        // B. Shuffle logic (Single Chain Method)
+        // 1. Shuffle the order of participants randomly
         console.log("Shuffling participants...");
         const validParticipants = participants.filter(p => p.name && p.email);
-        const indices = validParticipants.map((_, i) => i);
-        for (let i = indices.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * i);
-            [indices[i], indices[j]] = [indices[j], indices[i]];
+        const pool = validParticipants.map((_, i) => i);
+
+        // Fisher-Yates Shuffle of the pool
+        for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+
+        // 2. Create a single cycle (Chain)
+        // pool[i] gives to pool[i+1], last gives to first
+        const indices = new Array(validParticipants.length);
+        for (let i = 0; i < pool.length; i++) {
+            const giverIndex = pool[i];
+            const receiverIndex = pool[(i + 1) % pool.length];
+            indices[giverIndex] = receiverIndex;
         }
 
         const matches = [];
