@@ -67,9 +67,11 @@ async function createTransporter() {
         });
 
         const transporter = nodemailer.createTransport({
+            pool: true,
+            maxConnections: 3,
             host: "smtp.gmail.com",
-            port: 465,
-            secure: true,
+            port: 587,
+            secure: false, // Use STARTTLS
             auth: {
                 type: "OAuth2",
                 user: process.env.EMAIL_USER,
