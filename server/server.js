@@ -207,6 +207,11 @@ app.post('/api/event', async (req, res) => {
     if (!participants || participants.length < 2) {
         return res.status(400).json({ error: "Need at least 2 participants" });
     }
+    
+    // Limit to 50 participants on free SendGrid
+    if (participants.length > 50) {
+        return res.status(400).json({ error: "Maximum 50 participants allowed on free plan" });
+    }
 
     try {
         console.log("Creating event in DB...");
@@ -222,7 +227,17 @@ app.post('/api/event', async (req, res) => {
         // B. Shuffle logic (Single Chain Method)
         // 1. Shuffle the order of participants randomly
         console.log("Shuffling participants...");
-        const validParticipants = participants.filter(p => p.name && p.email);
+        const validParticipants = participants.filter(p => {
+            if (!p.name || !p.email) return false;
+            // Skip obvious spam emails to save quota
+            if (p.email.includes('@spam.com')) {
+                console.log(`Skipping spam email: ${p.email}`);
+                return false;
+            }
+            return true;
+        });
+        
+        console.log(`Filtered to ${validParticipants.length} valid participants`);
         const pool = validParticipants.map((_, i) => i);
 
         // Fisher-Yates Shuffle of the pool
@@ -277,7 +292,7 @@ app.post('/api/event', async (req, res) => {
             });
 
             // Prepare Email (Don't await yet!)
-            const appUrl = process.env.APP_URL || 'http://localhost:3000';
+            const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
             const revealLink = `${appUrl}/reveal?token=${token}`;
 
             const mailOptions = {
@@ -304,9 +319,22 @@ app.post('/api/event', async (req, res) => {
             emailPromises.push(sendEmailWithRetry(transporter, mailOptions));
         }
 
-        // D. Send All Emails in Parallel with error handling
-        console.log(`Sending ${emailPromises.length} emails in parallel...`);
-        const emailResults = await Promise.allSettled(emailPromises);
+        // D. Send emails with rate limiting (max 10 concurrent)
+        console.log(`Sending ${emailPromises.length} emails with rate limiting...`);
+        const batchSize = 10;
+        const emailResults = [];
+        
+        for (let i = 0; i < emailPromises.length; i += batchSize) {
+            const batch = emailPromises.slice(i, i + batchSize);
+            console.log(`Sending batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(emailPromises.length/batchSize)}`);
+            const batchResults = await Promise.allSettled(batch);
+            emailResults.push(...batchResults);
+            
+            // Wait 2 seconds between batches to avoid rate limits
+            if (i + batchSize < emailPromises.length) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
 
         const successful = emailResults.filter(result => result.status === 'fulfilled').length;
         const failed = emailResults.filter(result => result.status === 'rejected').length;
@@ -320,7 +348,7 @@ app.post('/api/event', async (req, res) => {
         // E. Send CSV to Organizer (also in parallel effectively, or just await at end)
         if (req.body.organizerEmail) {
             console.log("Sending CSV report to organizer:", req.body.organizerEmail);
-            const appUrl = process.env.APP_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` || 'http://localhost:3000';
+            const appUrl = (process.env.APP_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` || 'http://localhost:3000').replace(/\/$/, '');
             const csvContent = [
                 "Giver Name,Giver Email,Receiver Name,Reveal Link",
                 ...matchesList.map(m => `${m.Giver},${m.GiverEmail},${m.Receiver},${appUrl}/reveal?token=${m.Token}`)
@@ -444,7 +472,7 @@ app.post('/api/wishlist', async (req, res) => {
 
                     const transporter = await createTransporter();
                     if (transporter) {
-                        const appUrl = process.env.APP_URL || 'http://localhost:3000';
+                        const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
                         const santaLink = `${appUrl}/reveal?token=${mySanta.token}`;
 
                         await sendEmailWithRetry(transporter, {
