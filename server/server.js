@@ -282,11 +282,11 @@ app.post('/api/event', async (req, res) => {
             const mailOptions = {
                 from: process.env.EMAIL_USER,
                 to: giver.email,
-                subject: "🎅 You are a Secret Santa!",
+                subject: "Secret Santa Assignment - Action Required",
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-                        <h2>Hi ${giver.name},</h2>
-                        <p>You have been invited to a Secret Santa party!</p>
+                        <h2>Hello ${giver.name},</h2>
+                        <p>You have been assigned as a Secret Santa participant for an upcoming gift exchange event.</p>
                         <p><strong>Date:</strong> ${details.date}</p>
                         <p><strong>Location:</strong> ${details.location}</p>
                         <p><strong>Budget:</strong> ${details.budget}</p>
@@ -319,28 +319,24 @@ app.post('/api/event', async (req, res) => {
         // E. Send CSV to Organizer (also in parallel effectively, or just await at end)
         if (req.body.organizerEmail) {
             console.log("Sending CSV report to organizer:", req.body.organizerEmail);
+            const appUrl = process.env.APP_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` || 'http://localhost:3000';
             const csvContent = [
                 "Giver Name,Giver Email,Receiver Name,Reveal Link",
-                ...matchesList.map(m => `${m.Giver},${m.GiverEmail},${m.Receiver},${process.env.APP_URL || 'http://localhost:3000'}/reveal?token=${m.Token}`)
+                ...matchesList.map(m => `${m.Giver},${m.GiverEmail},${m.Receiver},${appUrl}/reveal?token=${m.Token}`)
             ].join("\n");
 
-            // Send CSV as email content instead of attachment for SendGrid compatibility
+            // Send CSV attachment to admin
             await sendEmailWithRetry(transporter, {
                 from: process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER,
                 to: req.body.organizerEmail,
-                subject: "📋 Secret Santa Pair List (Admin Report)",
-                html: `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-                        <h2>Secret Santa Pairs Created Successfully!</h2>
-                        <p>Here is the master list of all Secret Santa pairs for your event:</p>
-                        <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto;">${csvContent}</pre>
-                        <p><em>Keep this information secure and only share individual reveal links with participants.</em></p>
-                    </div>
-                `,
-                attachments: process.env.SENDGRID_API_KEY ? undefined : [
+                subject: "Secret Santa Pairs - CSV Report",
+                text: "Secret Santa pairs have been created successfully. Please find the complete list in the attached CSV file. Keep this information secure.",
+                attachments: [
                     {
+                        content: Buffer.from(csvContent).toString('base64'),
                         filename: 'secret_santa_pairs.csv',
-                        content: csvContent
+                        type: 'text/csv',
+                        disposition: 'attachment'
                     }
                 ]
             });
