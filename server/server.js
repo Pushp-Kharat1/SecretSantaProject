@@ -5,7 +5,6 @@ import nodemailer from 'nodemailer';
 import { google } from 'googleapis';
 import { v4 as uuidv4 } from 'uuid';
 import { initDB, createEvent, createMatch, getMatchByToken, markAsRevealed, updateWishlist, getSantaFor } from './db.js';
-import { createSendGridTransporter, createSimpleTransporter } from './email-service.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -52,7 +51,7 @@ async function sendEmailWithRetry(transporter, mailOptions, maxRetries = 3) {
         } catch (error) {
             console.log(`Email attempt ${attempt} failed:`, error.message);
             if (attempt === maxRetries) throw error;
-            
+
             // Exponential backoff: wait 2^attempt seconds
             const delay = Math.pow(2, attempt) * 1000;
             console.log(`Retrying in ${delay}ms...`);
@@ -61,29 +60,8 @@ async function sendEmailWithRetry(transporter, mailOptions, maxRetries = 3) {
     }
 }
 
+// server/server.js - Replace createTransporter function
 async function createTransporter() {
-    // Try SendGrid first (most reliable on Railway)
-    if (process.env.SENDGRID_API_KEY) {
-        console.log('Using SendGrid email service');
-        try {
-            return await createSendGridTransporter();
-        } catch (e) {
-            console.error('SendGrid failed, trying Gmail OAuth:', e.message);
-        }
-    }
-
-    // Try Gmail with App Password (simpler than OAuth)
-    if (process.env.EMAIL_APP_PASSWORD) {
-        console.log('Using Gmail with App Password');
-        try {
-            return await createSimpleTransporter();
-        } catch (e) {
-            console.error('Simple transporter failed, trying OAuth:', e.message);
-        }
-    }
-
-    // Fallback to OAuth (original method)
-    console.log('Using Gmail OAuth (fallback)');
     try {
         const oauth2Client = new OAuth2(
             process.env.GOOGLE_CLIENT_ID,
@@ -95,10 +73,11 @@ async function createTransporter() {
             refresh_token: process.env.GOOGLE_REFRESH_TOKEN
         });
 
+        // Get Access Token
         const accessToken = await new Promise((resolve, reject) => {
             oauth2Client.getAccessToken((err, token) => {
                 if (err) {
-                    console.error("Failed to create access token", err);
+                    console.error("Failed to create access token :(", err);
                     reject(err);
                 }
                 resolve(token);
@@ -106,14 +85,7 @@ async function createTransporter() {
         });
 
         const transporter = nodemailer.createTransport({
-            pool: true,
-            maxConnections: 1,
-            host: "smtp.gmail.com",
-            port: 465,
-            secure: true,
-            connectionTimeout: 60000,
-            greetingTimeout: 30000,
-            socketTimeout: 60000,
+            service: 'gmail',  // Changed from manual SMTP config
             auth: {
                 type: "OAuth2",
                 user: process.env.EMAIL_USER,
@@ -122,14 +94,19 @@ async function createTransporter() {
                 clientSecret: process.env.GOOGLE_CLIENT_SECRET,
                 refreshToken: process.env.GOOGLE_REFRESH_TOKEN
             },
-            tls: {
-                rejectUnauthorized: false
-            }
+            // Add timeout settings
+            connectionTimeout: 60000, // 60 seconds
+            greetingTimeout: 30000,
+            socketTimeout: 60000,
         });
+
+        // Verify connection
+        await transporter.verify();
+        console.log('✅ Email service ready');
 
         return transporter;
     } catch (e) {
-        console.error("All email services failed", e);
+        console.error("❌ Transporter creation error:", e);
         return null;
     }
 }
@@ -289,12 +266,12 @@ app.post('/api/event', async (req, res) => {
         // D. Send All Emails in Parallel with error handling
         console.log(`Sending ${emailPromises.length} emails in parallel...`);
         const emailResults = await Promise.allSettled(emailPromises);
-        
+
         const successful = emailResults.filter(result => result.status === 'fulfilled').length;
         const failed = emailResults.filter(result => result.status === 'rejected').length;
-        
+
         console.log(`Email results: ${successful} successful, ${failed} failed`);
-        
+
         if (failed > 0) {
             console.error('Some emails failed:', emailResults.filter(r => r.status === 'rejected').map(r => r.reason.message));
         }
