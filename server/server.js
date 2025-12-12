@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import { google } from 'googleapis';
 import { v4 as uuidv4 } from 'uuid';
-import { initDB, createEvent, createMatch, getMatchByToken, markAsRevealed, updateWishlist, getSantaFor } from './db.js';
+import { initDB, createEvent, createMatch, getMatchByToken, markAsRevealed, updateWishlist, getSantaFor, addPendingNotification, getPendingNotifications, deletePendingNotification, incrementNotificationAttempts } from './db.js';
 import sgMail from '@sendgrid/mail';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -196,6 +196,12 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // --- API ROUTES ---
+
+// Test endpoint
+app.get('/api/test', (req, res) => {
+    console.log('📞 Test API called');
+    res.json({ message: 'API is working', timestamp: new Date().toISOString() });
+});
 
 // 1. CREATE EVENT & SEND EMAILS
 app.post('/api/event', async (req, res) => {
@@ -419,8 +425,12 @@ app.post('/api/event', async (req, res) => {
 // 2. REVEAL MATCH
 app.get('/api/reveal/:token', async (req, res) => {
     const { token } = req.params;
+    console.log('🔍 Reveal API called with token:', token);
 
-    if (!token) return res.status(400).json({ error: "Token required" });
+    if (!token) {
+        console.log('❌ No token provided');
+        return res.status(400).json({ error: "Token required" });
+    }
 
     try {
         const match = await getMatchByToken(token);
@@ -432,6 +442,7 @@ app.get('/api/reveal/:token', async (req, res) => {
         // Mark as revealed (optional tracking)
         await markAsRevealed(token);
 
+        console.log('✅ Match found, sending response');
         res.json({
             giver: match.giver_name,
             receiver: match.receiver_name,
@@ -470,26 +481,38 @@ app.post('/api/wishlist', async (req, res) => {
                 if (mySanta && mySanta.giver_email) {
                     console.log(`Notifying Santa (${mySanta.giver_name}) about wishlist update from ${myInfo.giver_name}`);
 
-                    const transporter = await createTransporter();
-                    if (transporter) {
-                        const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-                        const santaLink = `${appUrl}/reveal?token=${mySanta.token}`;
+                    try {
+                        const transporter = await createTransporter();
+                        if (transporter) {
+                            const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+                            const santaLink = `${appUrl}/reveal?token=${mySanta.token}`;
 
-                        await sendEmailWithRetry(transporter, {
-                            from: process.env.EMAIL_USER,
-                            to: mySanta.giver_email,
-                            subject: "🎁 Wishlist Update! Open to know",
-                            html: `
-                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-                                    <h2>Hi ${mySanta.giver_name},</h2>
-                                    <p>Your gift recipient, <strong>${myInfo.giver_name}</strong>, has updated their wishlist!</p>
-                                    
-                                    <p>Click below to see what they want:</p>
-                                    
-                                    <a href="${santaLink}" style="display: inline-block; background-color: #d32f2f; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px;">View Wishlist 🎁</a>
-                                </div>
-                            `
-                        });
+                            await sendEmailWithRetry(transporter, {
+                                from: process.env.EMAIL_USER,
+                                to: mySanta.giver_email,
+                                subject: "🎁 Wishlist Update! Open to know",
+                                html: `
+                                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+                                        <h2>Hi ${mySanta.giver_name},</h2>
+                                        <p>Your gift recipient, <strong>${myInfo.giver_name}</strong>, has updated their wishlist!</p>
+                                        
+                                        <p>Click below to see what they want:</p>
+                                        
+                                        <a href="${santaLink}" style="display: inline-block; background-color: #d32f2f; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px;">View Wishlist 🎁</a>
+                                    </div>
+                                `
+                            });
+                        }
+                    } catch (emailError) {
+                        console.log('📧 Email failed, adding to pending queue:', emailError.message);
+                        // Add to pending notifications for retry later
+                        await addPendingNotification(
+                            myInfo.event_id,
+                            mySanta.giver_name,
+                            mySanta.giver_email,
+                            mySanta.token,
+                            myInfo.giver_name
+                        );
                     }
                 }
             }
@@ -503,6 +526,57 @@ app.post('/api/wishlist', async (req, res) => {
         res.status(500).json({ error: "Failed to update wishlist" });
     }
 });
+
+// Process pending notifications
+async function processPendingNotifications() {
+    try {
+        const pending = await getPendingNotifications();
+        if (pending.length === 0) return;
+
+        console.log(`Processing ${pending.length} pending notifications...`);
+        const transporter = await createTransporter();
+        
+        for (const notification of pending) {
+            try {
+                const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+                const santaLink = `${appUrl}/reveal?token=${notification.santa_token}`;
+
+                await sendEmailWithRetry(transporter, {
+                    from: process.env.EMAIL_USER,
+                    to: notification.santa_email,
+                    subject: "🎁 Wishlist Update! Open to know",
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+                            <h2>Hi ${notification.santa_name},</h2>
+                            <p>Your gift recipient, <strong>${notification.receiver_name}</strong>, has updated their wishlist!</p>
+                            
+                            <p>Click below to see what they want:</p>
+                            
+                            <a href="${santaLink}" style="display: inline-block; background-color: #d32f2f; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px;">View Wishlist 🎁</a>
+                        </div>
+                    `
+                });
+                
+                console.log(`✅ Sent pending notification to ${notification.santa_email}`);
+                await deletePendingNotification(notification.id);
+            } catch (error) {
+                console.log(`❌ Failed to send to ${notification.santa_email}:`, error.message);
+                await incrementNotificationAttempts(notification.id);
+            }
+        }
+    } catch (error) {
+        console.error('Error processing pending notifications:', error);
+    }
+}
+
+// API endpoint to manually trigger pending notifications
+app.post('/api/process-pending', async (req, res) => {
+    await processPendingNotifications();
+    res.json({ message: 'Pending notifications processed' });
+});
+
+// Auto-retry every 30 minutes
+setInterval(processPendingNotifications, 30 * 60 * 1000);
 
 // 4. SPA Catch-all (Production)
 if (process.env.NODE_ENV === 'production') {

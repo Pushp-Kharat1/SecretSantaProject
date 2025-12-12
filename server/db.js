@@ -60,6 +60,19 @@ export async function initDB() {
             );
         `);
 
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS pending_notifications (
+                id SERIAL PRIMARY KEY,
+                event_id INTEGER,
+                santa_name TEXT,
+                santa_email TEXT,
+                santa_token TEXT,
+                receiver_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                attempts INTEGER DEFAULT 0
+            );
+        `);
+
         console.log("Database initialized and tables verified.");
         return pool;
     } catch (error) {
@@ -167,4 +180,34 @@ export async function getSantaFor(eventId, receiverName) {
         [eventId, receiverName]
     );
     return result.rows[0];
+}
+
+export async function addPendingNotification(eventId, santaName, santaEmail, santaToken, receiverName) {
+    const pool = await initDB();
+    await pool.query(
+        `INSERT INTO pending_notifications (event_id, santa_name, santa_email, santa_token, receiver_name) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [eventId, santaName, santaEmail, santaToken, receiverName]
+    );
+}
+
+export async function getPendingNotifications() {
+    const pool = await initDB();
+    const result = await pool.query(
+        `SELECT * FROM pending_notifications ORDER BY created_at ASC`
+    );
+    return result.rows;
+}
+
+export async function deletePendingNotification(id) {
+    const pool = await initDB();
+    await pool.query(`DELETE FROM pending_notifications WHERE id = $1`, [id]);
+}
+
+export async function incrementNotificationAttempts(id) {
+    const pool = await initDB();
+    await pool.query(
+        `UPDATE pending_notifications SET attempts = attempts + 1 WHERE id = $1`,
+        [id]
+    );
 }
