@@ -64,6 +64,7 @@ async function sendEmailWithRetry(transporter, mailOptions, maxRetries = 3) {
 async function createTransporter() {
     if (process.env.SENDGRID_API_KEY) {
         console.log('🚀 Using SendGrid');
+        console.log('From email:', process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER);
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
         return {
             sendMail: async (mailOptions) => {
@@ -74,12 +75,42 @@ async function createTransporter() {
                     html: mailOptions.html,
                     attachments: mailOptions.attachments
                 };
-                return await sgMail.send(msg);
+                console.log('Sending email to:', msg.to, 'from:', msg.from);
+                try {
+                    const result = await sgMail.send(msg);
+                    console.log('✅ Email sent successfully');
+                    return result;
+                } catch (error) {
+                    console.error('❌ SendGrid error details:', {
+                        message: error.message,
+                        code: error.code,
+                        response: error.response?.body
+                    });
+                    throw error;
+                }
             }
         };
     }
     
     console.log('⚠️ SENDGRID_API_KEY not found, using Gmail fallback');
+    
+    // Try Gmail App Password first (simpler)
+    if (process.env.EMAIL_APP_PASSWORD) {
+        console.log('🔑 Using Gmail App Password');
+        try {
+            return nodemailer.createTransporter({
+                service: 'gmail',
+                auth: {
+                    user: process.env.EMAIL_USER,
+                    pass: process.env.EMAIL_APP_PASSWORD
+                }
+            });
+        } catch (e) {
+            console.error('Gmail App Password failed:', e.message);
+        }
+    }
+    
+    // Fallback to OAuth
     try {
         const oauth2Client = new OAuth2(
             process.env.GOOGLE_CLIENT_ID,
@@ -114,7 +145,7 @@ async function createTransporter() {
         return transporter;
     } catch (e) {
         console.error("❌ All email services failed:", e.message);
-        return null;
+        throw new Error('No email service available');
     }
 }
 
@@ -212,8 +243,10 @@ app.post('/api/event', async (req, res) => {
         const transporter = await createTransporter();
 
         if (!transporter) {
+            console.error('❌ Failed to create any email transporter');
             return res.status(500).json({ error: "Failed to initialize email service" });
         }
+        console.log('✅ Email transporter created successfully');
 
         const emailPromises = [];
         const matchesList = [];
@@ -291,13 +324,20 @@ app.post('/api/event', async (req, res) => {
                 ...matchesList.map(m => `${m.Giver},${m.GiverEmail},${m.Receiver},${process.env.APP_URL || 'http://localhost:3000'}/reveal?token=${m.Token}`)
             ].join("\n");
 
-            // We can await this one to ensure admin gets report before confirming success
+            // Send CSV as email content instead of attachment for SendGrid compatibility
             await sendEmailWithRetry(transporter, {
-                from: process.env.EMAIL_USER,
+                from: process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER,
                 to: req.body.organizerEmail,
                 subject: "📋 Secret Santa Pair List (Admin Report)",
-                text: "Here is the master list of all Secret Santa pairs for your event.",
-                attachments: [
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+                        <h2>Secret Santa Pairs Created Successfully!</h2>
+                        <p>Here is the master list of all Secret Santa pairs for your event:</p>
+                        <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto;">${csvContent}</pre>
+                        <p><em>Keep this information secure and only share individual reveal links with participants.</em></p>
+                    </div>
+                `,
+                attachments: process.env.SENDGRID_API_KEY ? undefined : [
                     {
                         filename: 'secret_santa_pairs.csv',
                         content: csvContent
