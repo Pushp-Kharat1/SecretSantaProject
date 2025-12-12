@@ -454,7 +454,7 @@ app.post('/api/wishlist', async (req, res) => {
                             html: `
                                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
                                     <h2>Hi ${mySanta.giver_name},</h2>
-                                    <p>Your secret child, <strong>${myInfo.giver_name}</strong>, has updated their wishlist!</p>
+                                    <p>Your gift recipient, <strong>${myInfo.giver_name}</strong>, has updated their wishlist!</p>
                                     
                                     <p>Click below to see what they want:</p>
                                     
