@@ -5,6 +5,7 @@ import nodemailer from 'nodemailer';
 import { google } from 'googleapis';
 import { v4 as uuidv4 } from 'uuid';
 import { initDB, createEvent, createMatch, getMatchByToken, markAsRevealed, updateWishlist, getSantaFor } from './db.js';
+import sgMail from '@sendgrid/mail';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -60,8 +61,25 @@ async function sendEmailWithRetry(transporter, mailOptions, maxRetries = 3) {
     }
 }
 
-// server/server.js - Replace createTransporter function
 async function createTransporter() {
+    if (process.env.SENDGRID_API_KEY) {
+        console.log('🚀 Using SendGrid');
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+        return {
+            sendMail: async (mailOptions) => {
+                const msg = {
+                    to: mailOptions.to,
+                    from: process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER,
+                    subject: mailOptions.subject,
+                    html: mailOptions.html,
+                    attachments: mailOptions.attachments
+                };
+                return await sgMail.send(msg);
+            }
+        };
+    }
+    
+    console.log('⚠️ SENDGRID_API_KEY not found, using Gmail fallback');
     try {
         const oauth2Client = new OAuth2(
             process.env.GOOGLE_CLIENT_ID,
@@ -73,19 +91,15 @@ async function createTransporter() {
             refresh_token: process.env.GOOGLE_REFRESH_TOKEN
         });
 
-        // Get Access Token
         const accessToken = await new Promise((resolve, reject) => {
             oauth2Client.getAccessToken((err, token) => {
-                if (err) {
-                    console.error("Failed to create access token :(", err);
-                    reject(err);
-                }
+                if (err) reject(err);
                 resolve(token);
             });
         });
 
         const transporter = nodemailer.createTransport({
-            service: 'gmail',  // Changed from manual SMTP config
+            service: 'gmail',
             auth: {
                 type: "OAuth2",
                 user: process.env.EMAIL_USER,
@@ -93,20 +107,13 @@ async function createTransporter() {
                 clientId: process.env.GOOGLE_CLIENT_ID,
                 clientSecret: process.env.GOOGLE_CLIENT_SECRET,
                 refreshToken: process.env.GOOGLE_REFRESH_TOKEN
-            },
-            // Add timeout settings
-            connectionTimeout: 60000, // 60 seconds
-            greetingTimeout: 30000,
-            socketTimeout: 60000,
+            }
         });
 
-        // Verify connection
         await transporter.verify();
-        console.log('✅ Email service ready');
-
         return transporter;
     } catch (e) {
-        console.error("❌ Transporter creation error:", e);
+        console.error("❌ All email services failed:", e.message);
         return null;
     }
 }
