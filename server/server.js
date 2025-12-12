@@ -202,6 +202,7 @@ app.post('/api/event', async (req, res) => {
     console.log("Processing /api/event request");
     const { details, participants } = req.body;
     console.log("Participants count:", participants?.length);
+    console.log("Event details:", details);
 
     if (!participants || participants.length < 2) {
         return res.status(400).json({ error: "Need at least 2 participants" });
@@ -295,7 +296,7 @@ app.post('/api/event', async (req, res) => {
                         
                         <a href="${revealLink}" style="display: inline-block; background-color: #d32f2f; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px;">Reveal My Match 🎁</a>
 
-                        <p style="margin-top: 20px;"><em>Organizer's Message:</em><br/>${details.message}</p>
+                        ${details.message ? `<p style="margin-top: 20px;"><em>Organizer's Message:</em><br/>${details.message}</p>` : ''}
                     </div>
                 `
             };
