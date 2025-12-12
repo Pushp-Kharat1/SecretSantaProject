@@ -325,20 +325,27 @@ app.post('/api/event', async (req, res) => {
                 ...matchesList.map(m => `${m.Giver},${m.GiverEmail},${m.Receiver},${appUrl}/reveal?token=${m.Token}`)
             ].join("\n");
 
-            // Send CSV attachment to admin
+            // Send CSV data to admin
             await sendEmailWithRetry(transporter, {
                 from: process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER,
                 to: req.body.organizerEmail,
-                subject: "Secret Santa Pairs - CSV Report",
-                text: "Secret Santa pairs have been created successfully. Please find the complete list in the attached CSV file. Keep this information secure.",
-                attachments: [
-                    {
-                        content: Buffer.from(csvContent).toString('base64'),
-                        filename: 'secret_santa_pairs.csv',
-                        type: 'text/csv',
-                        disposition: 'attachment'
-                    }
-                ]
+                subject: "Secret Santa Pairs - Master List",
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #333;">
+                        <h2>Secret Santa Pairs Created Successfully!</h2>
+                        <p>Here is the master list of all Secret Santa pairs:</p>
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <pre style="font-family: monospace; font-size: 12px; line-height: 1.4; margin: 0; white-space: pre-wrap;">${csvContent}</pre>
+                        </div>
+                        <p><strong>Instructions:</strong></p>
+                        <ul>
+                            <li>Copy the data above and save as a .csv file if needed</li>
+                            <li>Keep this information secure</li>
+                            <li>Only share individual reveal links with participants</li>
+                        </ul>
+                    </div>
+                `,
+                text: `Secret Santa Pairs Created Successfully!\n\n${csvContent}\n\nKeep this information secure and only share individual reveal links with participants.`
             });
         }
 
