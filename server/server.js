@@ -326,24 +326,50 @@ app.post('/api/event', async (req, res) => {
                 ...matchesList.map(m => `${m.Giver},${m.GiverEmail},${m.Receiver},${appUrl}/reveal?token=${m.Token}`)
             ].join("\n");
 
-            // Send CSV data to admin
+            // Send CSV data to admin as HTML table
+            const tableRows = matchesList.map(m => 
+                `<tr>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${m.Giver}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${m.GiverEmail}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">${m.Receiver}</td>
+                    <td style="padding: 8px; border: 1px solid #ddd;"><a href="${appUrl}/reveal?token=${m.Token}">Reveal Link</a></td>
+                </tr>`
+            ).join('');
+            
             await sendEmailWithRetry(transporter, {
                 from: process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_USER,
                 to: req.body.organizerEmail,
                 subject: "Secret Santa Pairs - Master List",
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #333;">
-                        <h2>Secret Santa Pairs Created Successfully!</h2>
-                        <p>Here is the master list of all Secret Santa pairs:</p>
-                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                            <pre style="font-family: monospace; font-size: 12px; line-height: 1.4; margin: 0; white-space: pre-wrap;">${csvContent}</pre>
+                        <h2>🎅 Secret Santa Pairs Created Successfully!</h2>
+                        <p>Here is the master list of all Secret Santa pairs for your event:</p>
+                        
+                        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: white;">
+                            <thead>
+                                <tr style="background: #f8f9fa;">
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Giver Name</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Giver Email</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Receiver Name</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Reveal Link</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tableRows}
+                            </tbody>
+                        </table>
+                        
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+                            <p><strong>⚠️ Important:</strong></p>
+                            <ul style="margin: 5px 0;">
+                                <li>Keep this information secure and confidential</li>
+                                <li>Only share individual reveal links with participants</li>
+                                <li>Participants will click their link to see who they're gifting</li>
+                            </ul>
                         </div>
-                        <p><strong>Instructions:</strong></p>
-                        <ul>
-                            <li>Copy the data above and save as a .csv file if needed</li>
-                            <li>Keep this information secure</li>
-                            <li>Only share individual reveal links with participants</li>
-                        </ul>
+                        
+                        <p style="margin-top: 20px; font-size: 12px; color: #666;">CSV Data (for backup):<br/>
+                        <code style="background: #f8f9fa; padding: 10px; display: block; font-size: 11px; margin-top: 5px;">${csvContent.replace(/\n/g, '<br/>')}</code></p>
                     </div>
                 `,
                 text: `Secret Santa Pairs Created Successfully!\n\n${csvContent}\n\nKeep this information secure and only share individual reveal links with participants.`
