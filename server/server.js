@@ -461,7 +461,6 @@ app.get('/api/reveal/:token', async (req, res) => {
 });
 
 // 3. UPDATE WISHLIST
-// 3. UPDATE WISHLIST
 app.post('/api/wishlist', async (req, res) => {
     console.log("Processing /api/wishlist request");
     const { token, wishlist } = req.body;
